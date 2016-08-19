@@ -12,18 +12,27 @@
 import sys
 import os
 import pwd
+import time
 import argparse
+#import pandas
 
 from os.path import join, getsize, islink
 
-def uname(uid):
-    return pwd.getpwuid(uid).pw_name
+
+
+# def uname(uid):
+#     return pwd.getpwuid(uid).pw_name
+
+uname = lambda uid: pwd.getpwuid(uid).pw_name
+lcol = lambda s: '{0: <16}'.format(s)
 
 class userwalk:
 
     totals = {}
     min_print = 0
     totals_only = False
+    unit = 1
+    header = False
 
     def __init__(self, basepath):
         self.basepath = basepath
@@ -42,6 +51,11 @@ class userwalk:
         if not (path in self.totals[user].keys()):
             return 0
         return self.totals[user][path]
+
+    # def totals_as_df(self):
+    #     flattened = [(u, p, s) for u, ps in self.totals.items() for p, s in ps.items() ]
+    #     df = pandas.DataFrame(flattened, columns=['user','path','size'])
+    #     return df
 
     def all_users(self):
         return sorted(self.totals.keys())
@@ -76,23 +90,40 @@ class userwalk:
                 subsz = self.get(u, d)
                 self.add(u, basepath, subsz)
 
+    def print_header(self):
+        if self.header:
+            print lcol("user"), lcol("size"), lcol("path")
+            print  "-" * 78
+
     def print_all(self):
+        self.print_header()
         for u in self.all_users():
             self.print_user(u)
 
-    def print_user(self, u):
-        if self.totals_only:
+    def print_totals(self):
+        self.print_header()
+        for u in self.all_users():
             self.print_entry(u, self.basepath)
-        else:
-            sorted_paths = sorted(self.totals[u].keys())
-            for p in sorted_paths:
-                self.print_entry(u, p)
+
+    def print_combined(self):
+        gt = sum([self.get(u, self.basepath) for u in self.all_users()])
+        print lcol("Combined total: "), int(gt / self.unit)
+
+    # def sort_paths_by_size(self, u):
+    #     totals_by_size = {}
+    #     for k, v in totals[u]
+    #         totals_by_size =
+
+    def print_user(self, u):
+        sorted_paths = sorted(self.totals[u].keys())
+        for p in sorted_paths:
+            self.print_entry(u, p)
 
     def print_entry(self, u, p):
         sz = self.get(u, p)
         sz_units = int(sz / self.unit)
         if (sz_units >= self.min_print):
-            print '{0: <16}'.format(u), '{0: <16}'.format(sz_units), p
+            print lcol(u), lcol(sz_units), p
 
         #self.record('joew', path, path_total)
         #return path_total
@@ -106,15 +137,45 @@ def main():
     parser.add_argument('-m', '--min_print', action='store', default=1, type=float,
                         metavar='SIZE',
                         help = 'Minimum total size (in specified units) for folder to be printed (default 0)')
-    parser.add_argument('-t', '--totals_only', action='store_true',
-                        help = 'Print only totals per user')
+    parser.add_argument('-v', '--verbose', action='store_true',
+                        help = 'Print header information')
+    parser.add_argument('-t', '--totals', action='store_true',
+                        help = 'Print totals per user')
+    parser.add_argument('-r', '--recursive', action='store_true',
+                        help = 'Print totals recursively for subfolders')
     args = parser.parse_args()
+
+    if args.verbose:
+        print "=" * 78
+        print lcol("userwalk.py:"), "Usage totals by user"
+        print lcol("Date: "), time.strftime("%c")
+        print lcol("Base path: "), args.basepath
+        print lcol("Units: "), "%g" % args.unit, "bytes"
+        print lcol("Threshold: "), "%g" % (args.unit * args.min_print), "bytes"
+        print lcol("Command: "), " ".join(sys.argv)
+        print  "=" * 78
+        print
 
     U = userwalk(args.basepath)
     U.min_print = args.min_print
-    U.totals_only = args.totals_only
     U.unit = args.unit
-    U.print_all()
+    U.header = args.verbose
+
+    if args.totals:
+        if args.verbose:
+            print "TOTALS"
+            print
+            U.print_combined()
+            print
+        U.print_totals()
+
+    if args.recursive:
+        if args.verbose:
+            print
+            print "SUBFOLDERS"
+            print 
+        U.print_all()
+
 
 
 if __name__ == "__main__":
